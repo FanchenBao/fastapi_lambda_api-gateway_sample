@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 
 root_path = os.getenv('ENV')
-app = FastAPI(root_path='' if root_path == 'dev' else f'/{root_path}')
+app = FastAPI(root_path=f'/{root_path}')
 
 app.add_middleware(
     CORSMiddleware,

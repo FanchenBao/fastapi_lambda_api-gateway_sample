@@ -9,8 +9,6 @@ router = APIRouter()
 async def root():
     return {
         "ENV": os.getenv("ENV"),
-        "FOO": os.getenv("FOO"),
-        "BAR": os.getenv("BAR"),
         "message": "Hello World!",
     }
 

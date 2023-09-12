@@ -42,9 +42,6 @@ while true; do
 done
 
 echo -e "${BWhite}Collecting environmental variables...${ColorOff}\n"
-# Environment variables, Read from either .env.stage or .env.prod
-FOO=$(cat .env.$ENV | ggrep -Po '(?<=FOO=).+')
-BAR=$(cat .env.$ENV | ggrep -Po '(?<=BAR=).+')
 
 TAG=$(date +%Y%m%d_%H%M%S)
 AWS_ACCOUNT=$(aws sts get-caller-identity | ggrep -Po '(?<="Account":\s")\d+(?=")')
@@ -116,7 +113,7 @@ fi
 echo -e "${BWhite}Update environment variables...${ColorOff}\n"
 until aws lambda update-function-configuration \
     --function-name $AWS_LAMBDA_FUNC_NAME \
-    --environment "Variables={ENV=$ENV,FOO=$FOO,BAR=$BAR}" 2> /dev/null
+    --environment "Variables={ENV=$ENV}" 2> /dev/null
 do
     echo -e "${Yellow}Wait for function creation or update to complete...${ColorOff}\n"
     sleep 2
