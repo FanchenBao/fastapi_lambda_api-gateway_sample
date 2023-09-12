@@ -2,7 +2,7 @@ from fastapi import FastAPI
 import uvicorn
 import os
 
-from api.api_v1.api import router as api_router
+from api.api_v0.api import router as api_v0_router
 from mangum import Mangum
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,7 +21,7 @@ app.add_middleware(
 )
 
 
-app.include_router(api_router, prefix="/api/v1")
+app.include_router(api_v0_router, prefix="/api/v0")
 handler = Mangum(app)
 
 

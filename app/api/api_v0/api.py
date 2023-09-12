@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 import os
-from .endpoints import users
+from .endpoints import items
 
 router = APIRouter()
 
@@ -15,4 +15,4 @@ async def root():
     }
 
 
-router.include_router(users.router)
+router.include_router(items.router)
