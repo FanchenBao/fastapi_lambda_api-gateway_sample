@@ -47,8 +47,8 @@ TAG=$(date +%Y%m%d_%H%M%S)
 AWS_ACCOUNT=$(aws sts get-caller-identity | ggrep -Po '(?<="Account":\s")\d+(?=")')
 # To get region, follow this: https://stackoverflow.com/a/63496689/9723036
 AWS_REGION=$(aws ec2 describe-availability-zones --output text --query 'AvailabilityZones[0].[RegionName]')
-AWS_LAMBDA_ROLE_NAME=lambda-ex
-AWS_LAMBDA_FUNC_NAME="$IMAGE-$ENV"
+AWS_LAMBDA_ROLE_NAME=$IMAGE-lambda-ex
+AWS_LAMBDA_FUNC_NAME=$IMAGE
 API_GATEWAY_NAME=$IMAGE
 
 
@@ -101,9 +101,8 @@ else
         --function-name $AWS_LAMBDA_FUNC_NAME \
         --package-type Image \
         --code ImageUri=$AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE:$TAG \
-        --role $(aws iam get-role --role-name $AWS_LAMBDA_ROLE_NAME --query 'Role.Arn' | tr -d '"') 2> /dev/null
+        --role $(aws iam get-role --role-name $AWS_LAMBDA_ROLE_NAME --query 'Role.Arn' --output text) 2> /dev/null
     do
-        echo -e "${Yellow}Waiting for $AWS_LAMBDA_ROLE_NAME to be ready...${ColorOff}\n"
         sleep 2
     done
 fi
@@ -115,32 +114,75 @@ until aws lambda update-function-configuration \
     --function-name $AWS_LAMBDA_FUNC_NAME \
     --environment "Variables={ENV=$ENV}" 2> /dev/null
 do
-    echo -e "${Yellow}Wait for function creation or update to complete...${ColorOff}\n"
     sleep 2
 done
 
 
-# Check API Gateway exists
-API_GATEWAY_ID=$(aws apigateway get-rest-apis --query "items[?name=='$API_GATEWAY_NAME'].id | [0]" | tr -d '"')
-if [ "$API_GATEWAY_ID" != "null" ]
+# Configure API Gateway
+API_GATEWAY_ID=$(aws apigateway get-rest-apis --query "items[?name=='$API_GATEWAY_NAME'].id" --output text)
+if [ "$API_GATEWAY_ID" == "" ]
 then
-    # Check if the API deployment stage exists. If not, create one
-    if aws apigateway get-stage --rest-api-id $API_GATEWAY_ID --stage-name $ENV &> /dev/null;
-    then
-        echo -e "${BGreen}API Gateway deployment Stage $ENV already exist"
-    else
-        echo -e "${Yellow}API Gateway deployment Stage $ENV does not exist. Create one...${ColorOff}\n"
-        aws apigateway create-deployment --rest-api-id $API_GATEWAY_ID --stage-name $ENV --variables "stageName=$ENV"
-    fi
+    echo -e "${BWhite}Create API Gateway...${ColorOff}\n"
+    aws apigateway create-rest-api --name $API_GATEWAY_NAME --region $AWS_REGION
+    # Wait for API Gateway to be ready
+    while [ "$API_GATEWAY_ID" == "" ]
+    do
+        API_GATEWAY_ID=$(aws apigateway get-rest-apis --query "items[?name=='$API_GATEWAY_NAME'].id" --output text)
+        sleep 2
+    done
 
-    echo -e "${BWhite}Grant permission for API Gateway to invoke lambda function...${ColorOff}"
-    LAMBDA_ARN=$(aws lambda get-function --function-name $AWS_LAMBDA_FUNC_NAME --query 'Configuration.FunctionArn' | tr -d '"')
+
+    echo -e "${BWhite}Create proxy resource...${ColorOff}\n"
+    PARENT_ID=""
+    # Wait for parent id to be ready
+    while [ "$PARENT_ID" == "" ]
+    do
+        PARENT_ID=$(aws apigateway get-resources --rest-api-id $API_GATEWAY_ID --region $AWS_REGION --query 'items[0].id' --output text)
+        sleep 2
+    done
+    aws apigateway create-resource --rest-api-id $API_GATEWAY_ID --region $AWS_REGION --parent-id $PARENT_ID --path-part {proxy+}
+
+
+    echo -e "${BWhite}Create ANY method on the proxy resource...${ColorOff}\n"
+    RESOURCE_ID=""
+    # Wait for parent id to be ready
+    while [ "$RESOURCE_ID" == "" ]
+    do
+        RESOURCE_ID=$(aws apigateway get-resources --rest-api-id $API_GATEWAY_ID --query "items[?parentId=='$PARENT_ID'].id" --output text)
+        sleep 2
+    done
+    aws apigateway put-method --rest-api-id $API_GATEWAY_ID --region $AWS_REGION --resource-id $RESOURCE_ID --http-method ANY --authorization-type "NONE"
+
+
+    LAMBDA_ARN=$(aws lambda get-function --function-name $AWS_LAMBDA_FUNC_NAME --query 'Configuration.FunctionArn' --output text)
+    echo -e "${BWhite}Create Lambda integration...${ColorOff}\n"
+    aws apigateway put-integration \
+        --region $AWS_REGION \
+        --rest-api-id $API_GATEWAY_ID \
+        --resource-id $RESOURCE_ID \
+        --http-method ANY \
+        --type AWS_PROXY \
+        --integration-http-method POST \
+        --uri arn:aws:apigateway:${AWS_REGION}:lambda:path/2015-03-31/functions/$LAMBDA_ARN/invocations
+
+
+    echo -e "${BWhite}Grant permission for API Gateway to invoke lambda function...${ColorOff}\n"
     aws lambda add-permission --function-name $LAMBDA_ARN --source-arn "arn:aws:execute-api:$AWS_REGION:$AWS_ACCOUNT:$API_GATEWAY_ID/*/*/{proxy+}" --principal apigateway.amazonaws.com --statement-id apigateway-access --action lambda:InvokeFunction &> /dev/null
-    echo -e "${BGreen}Success!${ColorOff}"
-
-    # Show OpenAPI documentation
-    python3 -m webbrowser "https://$API_GATEWAY_ID.execute-api.$AWS_REGION.amazonaws.com/$ENV/docs"
 else
-    echo -e "${BRed}Error: API Gateway $API_GATEWAY_NAME does NOT exist! Please create it manually.${ColorOff}\n"
-    exit 1
+    echo -e "${BGreen}API Gateway $API_GATEWAY_NAME already exist. Proceeds to deploy the API${ColorOff}\n"
 fi
+
+
+# Check if the API deployment stage exists. If not, create one
+if aws apigateway get-stage --rest-api-id $API_GATEWAY_ID --stage-name $ENV &> /dev/null;
+then
+    echo -e "${BGreen}API Gateway deployment Stage $ENV already exist"
+else
+    echo -e "${Yellow}API Gateway deployment Stage $ENV does not exist. Create one...${ColorOff}\n"
+    aws apigateway create-deployment --rest-api-id $API_GATEWAY_ID --stage-name $ENV
+fi
+
+
+echo -e "${BGreen}Success!${ColorOff}\n"
+# Show OpenAPI documentation
+python3 -m webbrowser "https://$API_GATEWAY_ID.execute-api.$AWS_REGION.amazonaws.com/$ENV/docs"
