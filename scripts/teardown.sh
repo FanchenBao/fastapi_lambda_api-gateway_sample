@@ -43,15 +43,15 @@ done
 
 echo -e "${BWhite}Collecting environmental variables...${ColorOff}\n"
 
-AWS_ACCOUNT=$(aws sts get-caller-identity | ggrep -Po '(?<="Account":\s")\d+(?=")')
+AWS_ACCOUNT=$(aws sts get-caller-identity --query 'Account' --output text)
 # To get region, follow this: https://stackoverflow.com/a/63496689/9723036
 AWS_REGION=$(aws ec2 describe-availability-zones --output text --query 'AvailabilityZones[0].[RegionName]')
 AWS_LAMBDA_ROLE_NAME=$IMAGE-lambda-ex
-AWS_LAMBDA_FUNC_NAME=$IMAGE
+AWS_LAMBDA_FUNC_NAME="$IMAGE-$ENV"
 API_GATEWAY_NAME=$IMAGE
 
 
-echo -e "${BWhite}Deleting API Gateway...${ColorOff}\n"
+echo -e "${BWhite}Deleting API Gateway ${API_GATEWAY_NAME}...${ColorOff}\n"
 API_GATEWAY_ID=$(aws apigateway get-rest-apis --query "items[?name=='$API_GATEWAY_NAME'].id" --output text)
 if [ "$API_GATEWAY_ID" != "" ]
 then
@@ -59,14 +59,14 @@ then
 fi
 
 
-echo -e "${BWhite}Deleting Lambda function...${ColorOff}\n"
+echo -e "${BWhite}Deleting Lambda function ${AWS_LAMBDA_FUNC_NAME}...${ColorOff}\n"
 if aws lambda get-function --function-name $AWS_LAMBDA_FUNC_NAME &> /dev/null;
 then
     aws lambda delete-function --function-name $AWS_LAMBDA_FUNC_NAME
 fi
 
 
-echo -e "${BWhite}Deleting Lambda execution role...${ColorOff}\n"
+echo -e "${BWhite}Deleting Lambda execution role ${AWS_LAMBDA_ROLE_NAME}...${ColorOff}\n"
 if aws iam get-role --role-name $AWS_LAMBDA_ROLE_NAME &> /dev/null
 then
     for POLICY_ARN in $(aws iam list-attached-role-policies --role-name $AWS_LAMBDA_ROLE_NAME --query 'AttachedPolicies[*].PolicyArn' --output text)

@@ -41,14 +41,14 @@ while true; do
     esac
 done
 
-echo -e "${BWhite}Collecting environmental variables...${ColorOff}\n"
+echo -e "${BWhite}Collecting variables...${ColorOff}\n"
 
 TAG=$(date +%Y%m%d_%H%M%S)
-AWS_ACCOUNT=$(aws sts get-caller-identity | ggrep -Po '(?<="Account":\s")\d+(?=")')
+AWS_ACCOUNT=$(aws sts get-caller-identity --query 'Account' --output text)
 # To get region, follow this: https://stackoverflow.com/a/63496689/9723036
-AWS_REGION=$(aws ec2 describe-availability-zones --output text --query 'AvailabilityZones[0].[RegionName]')
+AWS_REGION=$(aws ec2 describe-availability-zones --query 'AvailabilityZones[0].RegionName' --output text)
 AWS_LAMBDA_ROLE_NAME=$IMAGE-lambda-ex
-AWS_LAMBDA_FUNC_NAME=$IMAGE
+AWS_LAMBDA_FUNC_NAME="$IMAGE-$ENV"
 API_GATEWAY_NAME=$IMAGE
 
 
@@ -79,7 +79,7 @@ docker push $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE:$TAG
 # Create or update lambda function
 if aws lambda get-function --function-name $AWS_LAMBDA_FUNC_NAME &> /dev/null;
 then
-    echo -e "${BGreen}Function $IMAGE already exists on lambda; proceed to update...${ColorOff}\n"
+    echo -e "${BGreen}Function $AWS_LAMBDA_FUNC_NAME already exists on lambda; proceed to update...${ColorOff}\n"
     aws lambda update-function-code \
         --function-name $AWS_LAMBDA_FUNC_NAME \
         --image-uri $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE:$TAG
@@ -109,7 +109,7 @@ fi
 
 
 # Update ENV variables for the lambda function
-echo -e "${BWhite}Update environment variables...${ColorOff}\n"
+echo -e "${BWhite}Update environment variables for Lambda function $AWS_LAMBDA_FUNC_NAME...${ColorOff}\n"
 until aws lambda update-function-configuration \
     --function-name $AWS_LAMBDA_FUNC_NAME \
     --environment "Variables={ENV=$ENV}" 2> /dev/null
@@ -122,7 +122,7 @@ done
 API_GATEWAY_ID=$(aws apigateway get-rest-apis --query "items[?name=='$API_GATEWAY_NAME'].id" --output text)
 if [ "$API_GATEWAY_ID" == "" ]
 then
-    echo -e "${BWhite}Create API Gateway...${ColorOff}\n"
+    echo -e "${BWhite}Create API Gateway $API_GATEWAY_NAME...${ColorOff}\n"
     aws apigateway create-rest-api --name $API_GATEWAY_NAME --region $AWS_REGION
     # Wait for API Gateway to be ready
     while [ "$API_GATEWAY_ID" == "" ]
@@ -153,9 +153,7 @@ then
     done
     aws apigateway put-method --rest-api-id $API_GATEWAY_ID --region $AWS_REGION --resource-id $RESOURCE_ID --http-method ANY --authorization-type "NONE"
 
-
-    LAMBDA_ARN=$(aws lambda get-function --function-name $AWS_LAMBDA_FUNC_NAME --query 'Configuration.FunctionArn' --output text)
-    echo -e "${BWhite}Create Lambda integration...${ColorOff}\n"
+    echo -e "${BWhite}Create integration to dynamic Lambda funtion...${ColorOff}\n"
     aws apigateway put-integration \
         --region $AWS_REGION \
         --rest-api-id $API_GATEWAY_ID \
@@ -163,14 +161,16 @@ then
         --http-method ANY \
         --type AWS_PROXY \
         --integration-http-method POST \
-        --uri arn:aws:apigateway:${AWS_REGION}:lambda:path/2015-03-31/functions/$LAMBDA_ARN/invocations
-
-
-    echo -e "${BWhite}Grant permission for API Gateway to invoke lambda function...${ColorOff}\n"
-    aws lambda add-permission --function-name $LAMBDA_ARN --source-arn "arn:aws:execute-api:$AWS_REGION:$AWS_ACCOUNT:$API_GATEWAY_ID/*/*/{proxy+}" --principal apigateway.amazonaws.com --statement-id apigateway-access --action lambda:InvokeFunction &> /dev/null
+        --uri arn:aws:apigateway:${AWS_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:$AWS_REGION:$AWS_ACCOUNT:function:$IMAGE-\${stageVariables.env}/invocations
 else
-    echo -e "${BGreen}API Gateway $API_GATEWAY_NAME already exist. Proceeds to deploy the API${ColorOff}\n"
+    echo -e "${BGreen}API Gateway $API_GATEWAY_NAME already exist${ColorOff}\n"
 fi
+
+
+# Grant permission
+echo -e "${BWhite}Grant permission for API Gateway to invoke lambda function...${ColorOff}\n"
+LAMBDA_ARN=$(aws lambda get-function --function-name $AWS_LAMBDA_FUNC_NAME --query 'Configuration.FunctionArn' --output text)
+aws lambda add-permission --function-name $LAMBDA_ARN --source-arn "arn:aws:execute-api:$AWS_REGION:$AWS_ACCOUNT:$API_GATEWAY_ID/*/*/{proxy+}" --principal apigateway.amazonaws.com --statement-id apigateway-access --action lambda:InvokeFunction &> /dev/null
 
 
 # Check if the API deployment stage exists. If not, create one
@@ -179,7 +179,7 @@ then
     echo -e "${BGreen}API Gateway deployment Stage $ENV already exist"
 else
     echo -e "${Yellow}API Gateway deployment Stage $ENV does not exist. Create one...${ColorOff}\n"
-    aws apigateway create-deployment --rest-api-id $API_GATEWAY_ID --stage-name $ENV
+    aws apigateway create-deployment --rest-api-id $API_GATEWAY_ID --stage-name $ENV --variables env=$ENV
 fi
 
 
