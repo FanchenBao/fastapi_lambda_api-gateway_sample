@@ -76,4 +76,10 @@ then
     aws iam delete-role --role-name $AWS_LAMBDA_ROLE_NAME
 fi
 
+echo -e "${BWhite}Deleting ECR repo ${IMAGE}...${ColorOff}\n"
+if aws ecr describe-repositories --repository-names $IMAGE --profile $PROFILE &> /dev/null
+then
+    aws ecr delete-repository --repository-name $IMAGE --force --profile $PROFILE 1> /dev/null
+fi
+
 echo -e "${BGreen}Tear down complete!${ColorOff}\n"
