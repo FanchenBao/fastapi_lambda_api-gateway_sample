@@ -118,10 +118,25 @@ config_lambda() {
 
 
     # Update ENV variables for the lambda function
-    echo -e "${BWhite}Update environment variables for Lambda function $AWS_LAMBDA_FUNC_NAME...${ColorOff}\n"
+    comment_re="^#.*"
+    VARIABLES="Variables={"
+    # Handle a last line that may not be followed by a newline
+    # https://unix.stackexchange.com/a/418067
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Trime leading white space: https://stackoverflow.com/a/3232433/9723036
+        trimmed="$(echo $line | sed -e 's/^[[:space:]]*//')"
+        # ignore commented out env and empty lines
+        if [[ ! $trimmed =~ $comment_re ]] && [ "$trimmed" != "" ];
+        then
+            VARIABLES+="$trimmed,"
+        fi
+    done < .env.$ENV
+    VARIABLES+="ENV=$ENV}"
+
+    echo -e "${BWhite}Update environment variables...${ColorOff}\n"
     until aws lambda update-function-configuration \
         --function-name $AWS_LAMBDA_FUNC_NAME \
-        --environment "Variables={ENV=$ENV}" 2> /dev/null
+        --environment $VARIABLES 2> /dev/null
     do
         sleep 2
     done
