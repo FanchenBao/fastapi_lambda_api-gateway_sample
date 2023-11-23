@@ -20,10 +20,10 @@ This repo holds the source code for the article: [API Service with FastAPI + AWS
     ```
     pip install -r requirements.txt
     ```
-3. Add `.env` file to hold the environment variables. The file itself is not committed to the repo per standard practice, but the content should be as follows:
+3. Add `.env` file to hold the environment variables. The file itself is not committed to the repo per standard practice. Example content is shown below:
     ```
-    SOME_ENV=some_env
-    OTHER_ENV=other_env
+    SOME_ENV=SOJ
+    OTHER_ENV=Shako
     ```
 4. Run the app inside the `app/` folder
     ```
@@ -36,6 +36,18 @@ This repo holds the source code for the article: [API Service with FastAPI + AWS
 The FastAPI app is packaged into a docker image and executed on AWS Lambda.
 
 First create a `.env.stage` or `.env.prod` files to hold the environment variables specific to the `stage` or `prod`. These two files should NOT be committed.
+
+```
+# example content for .env.stage
+SOME_ENV=Anni
+OTHER_ENV=Raven
+```
+
+```
+# example content for .env.prod
+SOME_ENV=Torch
+OTHER_ENV=Griffon
+```
 
 Then run the following script to automate the entire process of building and deploying the FastAPI app to AWS.
 
