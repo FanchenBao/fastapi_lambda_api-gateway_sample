@@ -20,8 +20,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add or comment out the following lines of code to include a new version of API or
-# deprecate an old version
+# Add or comment out the following lines of code to include a new version of
+# API or deprecate an old version
 app.include_router(api_v0_router, prefix="/api/v0")
 
 # The magic that allows the integration with AWS Lambda
