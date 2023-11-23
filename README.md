@@ -20,16 +20,24 @@ This repo holds the source code for the article: [API Service with FastAPI + AWS
     ```
     pip install -r requirements.txt
     ```
-3. Run the app inside the `app/` folder
+3. Add `.env` file to hold the environment variables. The file itself is not committed to the repo per standard practice, but the content should be as follows:
+    ```
+    SOME_ENV=some_env
+    OTHER_ENV=other_env
+    ```
+4. Run the app inside the `app/` folder
     ```
     cd app
     uvicorn main:app --reload
     ```
-4. View the OpenAPI documentation at `http://127.0.0.1:8000/docs`
+5. View the OpenAPI documentation at `http://127.0.0.1:8000/docs`
 
 # Deploy the FastAPI App to AWS
+The FastAPI app is packaged into a docker image and executed on AWS Lambda.
 
-The FastAPI app is packaged into a docker image and executed on AWS Lambda. The following script automates the entire process of building and deploying the FastAPI app to AWS.
+First create a `.env.stage` or `.env.prod` files to hold the environment variables specific to the `stage` or `prod`. These two files should NOT be committed.
+
+Then run the following script to automate the entire process of building and deploying the FastAPI app to AWS.
 
 ```
 IMAGE=fastapi ENV=stage ./scripts/deploy.sh
